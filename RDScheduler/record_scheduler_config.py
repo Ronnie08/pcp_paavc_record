@@ -25,10 +25,10 @@ configs = {
         'cluster': False
         # 'host': 'rd8gb675.redis.db.cloud.papub',
         # 'port': 11573,
-        # 'password': 'RDRedisDev2021'
+        # 'password': 'RDRedisDev2021',
         # 'cluster': True
     },
     'manager':{
-        'callback':''
+        'callback':'http://10.10.96.13:20100/rmc/api/record/callback'
     }
 }

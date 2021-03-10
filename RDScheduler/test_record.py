@@ -7,6 +7,7 @@ import sys
 import asyncio
 import logging
 from record_common import pes_get_configmap_str, pes_get_configmap_int, send_request_json, send_request_params, dict_to_Dict
+from aredis_client import RedisClient
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -58,8 +59,7 @@ async def test_mprocess():
         "streamName": "ok02265",
         "objectKey": "",
         "target": "OBS",
-        #"host": "obs-cn-shenzhen.yun.pingan.com",
-        "host": "obs-cn-shenzhen-internal.cloud.papub",
+        "host": "obs-cn-shenzhen.yun.pingan.com",
         "bucketName": "paavc-vod-publictest4",
         "accessKey": "xt5CkKNR8ZVDmPusVWgzd4SFe7u00tCBU05yqjEnD8Zve4jCo-Gv1xgvGwGnkigTIBczyJ0MIrGsSsqQ6O9YTg",
         "secretKey": "JOGUZ6EG2E7VdOimQMOCaFF8zemvNkygYBv68s2BRqARHMooJpPo9mNb8683_pNxdfXpgn2QROBtlLQEl_pi9Q",
@@ -71,6 +71,21 @@ async def test_mprocess():
     status, text = await send_request_json('http://127.0.0.1:18080/scheduler/mprocess/v1', json_data=task_info)
     # status, text = await send_request_json('http://127.0.0.1:8000/record/live/mprocess', json_data=task_info)
     logger.info(f"status:{status} text:{text}")
+
+async def clear():
+    g_redis_client = RedisClient('rd8gb675.redis.db.cloud.papub', 11573, 'RDRedisDev2021', True)
+    g_redis_client.connect_to_redis()
+    # 清空历史任务
+    count = 0
+    while True:
+        ret, mprocess_task_id = await g_redis_client.blpop('pard|urnHnDev|mprocess_tlist', timeout=1)
+        if ret != 0:
+            break
+        if mprocess_task_id is None:
+            break
+        count += 1
+    logger.info(f"clear count:{count}")
+
 
 
 if __name__ == '__main__':
@@ -84,6 +99,9 @@ if __name__ == '__main__':
     # tasks.append(test_mprocess())
     # tasks.append(test_mprocess())
     # tasks.append(test_mprocess())
+
+    loop.run_until_complete(asyncio.wait([clear()]))
+
     for _ in range(1):
         tasks.append(test_mprocess())
     loop.run_until_complete(asyncio.wait(tasks))

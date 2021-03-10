@@ -253,7 +253,7 @@ async def task_handle_async_api_heartbeat(sever_index=0):
 
         except Exception as e:
             logger.error(f"get exception:{e} trace:" + traceback.format_exc())
-    logger.error("(MsgNotify) task_handle_async_api_heartbeat %d leave." % sever_index)
+    logger.error(f"(MsgNotify) task leave task_handle_async_api_heartbeat {sever_index}")
 
 
 # 监听心跳状态变化，发现心跳异常的节点
@@ -276,8 +276,8 @@ async def task_heartbeat_monitor():
                                 if ret == 0 and value is not None and len(value) > 0:
                                     msg = json.loads(value)
                                     if (now_time - msg["update_time"] > g_settings.server.heartbeat_interval + 1):
-                                        logger.warning("{} {} ip:{} port:{} heartbeat error".format(nodes[node]["ntype"], nodes[node]["device_id"],
-                                                                                                    nodes[node]["ip"], nodes[node]["port"]))
+                                        logger.warning("(MsgNotify) {} {} ip:{} port:{} heartbeat error".format(nodes[node]["ntype"], nodes[node]["device_id"],
+                                                                                                                nodes[node]["ip"], nodes[node]["port"]))
                                         # TODO 告警通知
                 except Exception as e:
                     logger.error(f"get exception:{e} trace:" + traceback.format_exc())
@@ -290,7 +290,7 @@ async def task_heartbeat_monitor():
                     logger.error("scheduler heartbeat unlock error!")
             await asyncio.sleep(10)
     except Exception as e:
-        logger.error(f"(MsgNotify) task_heartbeat_monitor get exception:{e} trace:" + traceback.format_exc())
+        logger.error(f"(MsgNotify) task leave task_heartbeat_monitor get exception:{e} trace:" + traceback.format_exc())
         # TODO 通知异常
 
 
@@ -318,7 +318,7 @@ async def task_wait_to_push():
                             wait_upload = False
                         elif now_time > record_stream_data["update_time"] + 120:
                             wait_upload = False
-                            logger.warning("task update_time timeout record_stream_data:{} now:{}".format(record_stream_data, now_time))
+                            logger.warning("(MsgNotify) task file upload timeout record_stream_data:{} now:{}".format(record_stream_data, now_time))
                     else:
                         wait_upload = False
 
@@ -396,9 +396,9 @@ async def task_subscribe_node_in_thread():
                 await asyncio.sleep(10)
             pubsub.stop()
             await asyncio.sleep(10)
-            logger.error("(MsgNotify) pubsub exit")
+            logger.error("(MsgNotify) task leave pubsub exit")
         except Exception as e:
-            logger.error(f"(MsgNotify) pubsub exit get exception:{e} trace:" + traceback.format_exc())
+            logger.error(f"(MsgNotify) task leave pubsub exit get exception:{e} trace:" + traceback.format_exc())
             await asyncio.sleep(10)
 
 
@@ -519,7 +519,8 @@ async def task_handle_async_api(sever_index=0):
                         record_stream_data["Scount"] = record_stream_data["Scount"] + 1
                         record_stream_data["scheduler_id"] = g_settings.server.scheduler_id
                         await g_redis_client.set(g_redis_record_prefix + stream_key, json.dumps(record_stream_data), ex=g_redis_key_expire, retry=True)
-                        logger.info("action:{} ts:{} Scount:{} Ecount:{}".format(body.get("action"), body.get("file"), record_stream_data["Scount"], record_stream_data["Ecount"]))
+                        logger.info("action:{} ts:{} Scount:{} Ecount:{}".format(body.get("action"), body.get("file"), record_stream_data["Scount"],
+                                                                                 record_stream_data["Ecount"]))
                     else:
                         logger.warning("skip taskId:{} {}".format(body.get("taskId"), body))
                 else:
@@ -535,11 +536,12 @@ async def task_handle_async_api(sever_index=0):
                         record_stream_data["Ecount"] = record_stream_data["Ecount"] + 1
                         record_stream_data["scheduler_id"] = g_settings.server.scheduler_id
                         await g_redis_client.set(g_redis_record_prefix + stream_key, json.dumps(record_stream_data), ex=g_redis_key_expire, retry=True)
-                        logger.info("action:{} ts:{} Scount:{} Ecount:{}".format(body.get("action"), body.get("tsPath"), record_stream_data["Scount"], record_stream_data["Ecount"]))
+                        logger.info("action:{} ts:{} Scount:{} Ecount:{}".format(body.get("action"), body.get("tsPath"), record_stream_data["Scount"],
+                                                                                 record_stream_data["Ecount"]))
                     else:
-                        logger.warning("skip taskId:{} {}".format(body.get("taskId"), body))
+                        logger.warning("(MsgNotify) skip taskId:{} {}".format(body.get("taskId"), body))
                 else:
-                    logger.warning("unknow stream_key:{} {}".format(stream_key, body))
+                    logger.warning("(MsgNotify) unknow stream_key:{} {}".format(stream_key, body))
 
             # 录制节点，结束录制
             elif action == "RecordStreamStop":
@@ -556,7 +558,7 @@ async def task_handle_async_api(sever_index=0):
                     logger.warning("unknow stream_key:{} {}".format(stream_key, body))
         except Exception as e:
             logger.error(f"get exception:{e} trace:" + traceback.format_exc())
-    logger.error("(MsgNotify) task_handle_async_api %d leave." % sever_index)
+    logger.error(f"(MsgNotify) task leave task_handle_async_api {sever_index}")
 
 
 async def task_handle_async_mprocess_cbk():
@@ -590,15 +592,15 @@ async def task_handle_async_mprocess_cbk():
                     if url is not None and len(url) > 0 and url.lower().find('http') != -1:
                         # TODO. 组织必要的回调参数，返回给管理中心
                         cbk_info = {
-                            "mprocess_task_id": info.get("mprocess_task_id"),
+                            "taskId": info.get("mprocess_task_id"),
                             "domain": info.get("domain"),
                             "appName": info.get("appName"),
                             "streamName": info.get("streamName"),
-                            "startTime": info.get("startTime"),
-                            "endTime": info.get("endTime"),
-                            "bucketName": info.get("bucketName"),
-                            "objectKey": info.get("objectKey"),
-                            "media_info": info.get("media_info"),
+                            "start": info.get("startTime"),
+                            "end": info.get("endTime"),
+                            "bucket": info.get("bucketName"),
+                            "objectkey": info.get("objectKey"),
+                            "mediaInfo": info.get("media_info"),
                             "status": info.get("mprocess_status"),
                         }
                         status, text = await send_request_json(url, json_data=cbk_info)
@@ -614,7 +616,7 @@ async def task_handle_async_mprocess_cbk():
                 logger.warning(f"mprocess_task_id is None body:{body}")
         except Exception as e:
             logger.error(f"get exception:{e} trace:" + traceback.format_exc())
-    logger.error("(MsgNotify) task_handle_async_mprocess_cbk leave")
+    logger.error("(MsgNotify) task leave task_handle_async_mprocess_cbk")
 
 
 async def _alloc_record_node_check_valid(now_time, body, node_key):
@@ -877,6 +879,20 @@ async def _handle_mprocess_service(request):
         "accessKey": "xt5CkKNR8ZVDmPusVWgzd4SFe7u00tCBU05yqjEnD8Zve4jCo-Gv1xgvGwGnkigTIBczyJ0MIrGsSsqQ6O9YTg",
         "secretKey": "JOGUZ6EG2E7VdOimQMOCaFF8zemvNkygYBv68s2BRqARHMooJpPo9mNb8683_pNxdfXpgn2QROBtlLQEl_pi9Q",
     }
+    {
+        "action": "UpdateMediaProcessTask",
+        "startTime": 1611212411659 + 15000,
+        "endTime": 1611227815087,
+        "domain": "www.test.com",
+        "appName": "live",
+        "streamName": "ok",
+        "objectKey": "",
+        "target": "OBS/IOBS",
+        "host": "obs-cn-shenzhen.yun.pingan.com",
+        "bucketName": "paavc-vod-publictest4",
+        "accessKey": "xt5CkKNR8ZVDmPusVWgzd4SFe7u00tCBU05yqjEnD8Zve4jCo-Gv1xgvGwGnkigTIBczyJ0MIrGsSsqQ6O9YTg",
+        "secretKey": "JOGUZ6EG2E7VdOimQMOCaFF8zemvNkygYBv68s2BRqARHMooJpPo9mNb8683_pNxdfXpgn2QROBtlLQEl_pi9Q",
+    }
     """
     try:
         body = await request.json()
@@ -953,7 +969,7 @@ async def _handle_mprocess_service(request):
         # 录制录制任务完成
         elif action == "UpdateMediaProcessTask":
             await g_msg_queue_mprocess_cbk.put(body)
-            return web.Response(text="0")
+            return web.Response(text=json.dumps({"code": 20000, "msg": "OK"}), content_type='application/json')
         else:
             logger.warning("Unknow Request body:{}".format(body))
             response_info = {"code": 40000, "msg": "Unknow Request action"}

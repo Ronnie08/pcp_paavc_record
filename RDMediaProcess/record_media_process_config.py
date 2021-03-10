@@ -41,5 +41,14 @@ configs = {
         'port': 11573,
         'password': 'RDRedisDev2021',
         'cluster': True
+    },
+    'obs': {
+        'default_host':"obs-cn-shenzhen.yun.pingan.com"
+    },
+    'iobs': {
+        'default_host':""
+    },
+    'iobs_iot': {
+        'default_host':""
     }
 }

@@ -63,6 +63,7 @@ MPROCESS_STATUS_DOWNLOAD_ERROR = 3
 MPROCESS_STATUS_NO_DATA = 4
 MPROCESS_STATUS_NO_KEY = 5
 
+
 class FormatError(Exception):
     pass
 
@@ -143,6 +144,7 @@ async def task_heartbeat():
             logger.error("heartbeat trace:" + traceback.format_exc())
         finally:
             await asyncio.sleep(5)
+    logger.error("(MsgNotify) task leave task_heartbeat")
 
 
 def _sync_obs_upload_file(host, access_key, secret_key, bucket, object_key, path):
@@ -217,7 +219,7 @@ def _sync_download_file(body):
         logger.info("{} {} download done {}".format(obs_info["bucket"], object_key, body["path"]))
         return body
     except Exception as e:
-        if isinstance(e, AmazonClientException):   # isinstance(e, HTTPError) and e.code == 404
+        if isinstance(e, AmazonClientException):  # isinstance(e, HTTPError) and e.code == 404
             logger.warning("download get an exception:{} obs_info:{} body:{} key:{}".format(e, obs_info, body, object_key))
             return None
         else:
@@ -334,8 +336,18 @@ async def _process_m3u8_resource(index, body, m3u8_parse):
     if media_end - end_time > g_min_cut_ms:
         to = int((media_duration - (media_end - end_time) + 999) / 1000)
         duration = to - ss
-    logger.info("tid:{} p:{} start_time:{} end_time:{} media_start:{} media_end:{}".format(mprocess_task_id, index, start_time, end_time, media_start, media_end))
-    logger.info("tid:{} p:{} timelen:{} media_duration:{} ss:{} to:{} duration:{}".format(mprocess_task_id, index, int(end_time - start_time), media_duration, ss, to, duration))
+    logger.info("tid:{} p:{} start_time:{} end_time:{} media_start:{} media_end:{}".format(mprocess_task_id, index, start_time, end_time, media_start,
+                                                                                           media_end))
+    logger.info("tid:{} p:{} timelen:{} media_duration:{} ss:{} to:{} duration:{}".format(mprocess_task_id, index, int(end_time - start_time), media_duration,
+                                                                                          ss, to, duration))
+
+    # 如果定时录制，实际数据不足需要调整返回的数据值
+    if media_start > start_time:
+        body["startTime"] = media_start
+        logger.info("tid:{} p:{} change start_time to media_start offset:+{}".format(mprocess_task_id, index, (media_start - start_time)))
+    if media_end < end_time:
+        body["endTime"] = media_end
+        logger.info("tid:{} p:{} change end_time to media_end offset:-{}".format(mprocess_task_id, index, (end_time - media_end)))
 
     # 其他参数
     random_value = random.randint(0, 1000000)
@@ -483,10 +495,19 @@ async def _upload_process_resource(body):
         body["objectKey"] = object_key
 
     if target == "OBS":
+        if host is None or len(host) <= 0:
+            if g_settings.get("obs") is not None:
+                host = g_settings.obs.get("default_host")
         ret = await _async_obs_upload_file(host, access_key, secret_key, bucket, object_key, upload_process_file)
     elif target == "IOBS":
+        if host is None or len(host) <= 0:
+            if g_settings.get("iobs") is not None:
+                host = g_settings.iobs.get("default_host")
         ret = await _async_iobs_upload_file(host, access_key, secret_key, bucket, object_key, upload_process_file, token)
     elif target == "IOBS-IOT":
+        if host is None or len(host) <= 0:
+            if g_settings.get("iobs_iot") is not None:
+                host = g_settings.iobs_iot.get("default_host")
         ret = await _async_iobs_upload_file(host, None, None, None, object_key, upload_process_file, token=None)
     else:
         logger.warning("upload target error:{}".format(body))
@@ -498,6 +519,7 @@ async def _upload_process_resource(body):
     else:
         return ret
 
+
 async def _update_status(status, body=None, mprocess_task_id=None):
     # 更新任务状态
     if mprocess_task_id is not None:
@@ -506,7 +528,7 @@ async def _update_status(status, body=None, mprocess_task_id=None):
             logger.warning(f"tid:{mprocess_task_id} get task info error(redis)")
         else:
             body = json.loads(value)
-        
+
     if body is not None:
         mprocess_task_id = body.get("mprocess_task_id")
         body["action"] = "UpdateMediaProcessTask"
@@ -516,10 +538,15 @@ async def _update_status(status, body=None, mprocess_task_id=None):
             logger.warning(f"update task status error(redis)")
 
         # 通知调度中心，录制结束，状态更新
-        status, text = await send_request_json(g_settings.scheduler.mprocess, json_data={"action": "UpdateMediaProcessTask", "mprocess_task_id": mprocess_task_id})
+        status, text = await send_request_json(g_settings.scheduler.mprocess,
+                                               json_data={
+                                                   "action": "UpdateMediaProcessTask",
+                                                   "mprocess_task_id": mprocess_task_id
+                                               })
         if status != 200:
             logger.warning(f"tid:{mprocess_task_id} done cbk error")
     return None
+
 
 async def task_media_process_worker(index):
     """
@@ -602,7 +629,9 @@ async def task_media_process_worker(index):
             # 更新任务状态
             if update_status != MPROCESS_STATUS_OK:
                 await _update_status(update_status, body)
-    logger.error(f"(MsgNotify) task_media_process_worker {index} leave")
+                logger.warning(f"(MsgNotify) mprocess error status:{update_status} tid:{mprocess_task_id} p:{index} ")
+    logger.error(f"(MsgNotify) task leave task_media_process_worker {index}")
+
 
 async def task_media_upload_worker(index):
     """
@@ -622,7 +651,7 @@ async def task_media_upload_worker(index):
             upload_process_file = body.get("upload_process_file")
             done_info = await _upload_process_resource(body)
             if done_info is None:
-                logger.warning(f"tid:{mprocess_task_id} u:{index} upload:{upload_process_file} error body:{body}")
+                logger.warning(f"(MsgNotify) upload error tid:{mprocess_task_id} u:{index} upload:{upload_process_file} body:{body}")
                 # 更新任务状态
                 await _update_status(MPROCESS_STATUS_UPLOAD_ERROR, body)
                 continue
@@ -639,6 +668,7 @@ async def task_media_upload_worker(index):
             else:
                 logger.warning(f"tid:{mprocess_task_id} u:{index} {upload_process_file} can't remove")
             g_upload_task_count -= 1
+    logger.error("(MsgNotify) task leave task_media_upload_worker")
 
 
 async def _api_logger_factory(app, handler):
@@ -845,6 +875,7 @@ async def task_dirs_monitor(path=None):
             logger.error(f"get exception:{e} trace:" + traceback.format_exc())
         finally:
             await asyncio.sleep(g_settings.monitor.get("loop_times") + 1)
+    logger.error(f"(MsgNotify) task leave task_dirs_monitor {path}")
 
 
 async def test_task():
@@ -918,7 +949,6 @@ async def test_task():
         "accessKey": "xt5CkKNR8ZVDmPusVWgzd4SFe7u00tCBU05yqjEnD8Zve4jCo-Gv1xgvGwGnkigTIBczyJ0MIrGsSsqQ6O9YTg",
         "secretKey": "JOGUZ6EG2E7VdOimQMOCaFF8zemvNkygYBv68s2BRqARHMooJpPo9mNb8683_pNxdfXpgn2QROBtlLQEl_pi9Q",
         "token": "",
-
         "mprocess_task_id": "123"
     }
     await g_process_queue.put(task_info)
@@ -942,12 +972,7 @@ if __name__ == '__main__':
         signal.signal(signal.SIGHUP, _signal_reload)
 
         # 连接redis
-        g_redis_client = RedisClient(
-            g_settings.redis.host,
-            g_settings.redis.port,
-            g_settings.redis.password,
-            g_settings.redis.cluster
-        )
+        g_redis_client = RedisClient(g_settings.redis.host, g_settings.redis.port, g_settings.redis.password, g_settings.redis.cluster)
         g_redis_client.connect_to_redis()
 
         # 启动录制服务
